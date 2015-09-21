@@ -173,8 +173,13 @@ glusterfs_graph_acl (glusterfs_graph_t *graph, glusterfs_ctx_t *ctx)
         if (!cmd_args->acl)
                 return 0;
 
+#if 0
         ret = glusterfs_graph_insert (graph, ctx, "system/posix-acl",
                                       "posix-acl-autoload", 1);
+#else
+        ret = glusterfs_graph_insert (graph, ctx, "system/gfrichacl",
+                                      "posix-acl-autoload", 1);
+#endif
         return ret;
 }
 

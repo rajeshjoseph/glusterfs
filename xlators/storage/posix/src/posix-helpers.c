@@ -969,6 +969,84 @@ out:
         return op_ret;
 }
 
+
+void richacl_error (const char *fmt, ...)
+{
+        char buff [1024] = "";
+        va_list valist;
+        va_start (valist, fmt);
+        sprintf (buff, fmt, valist);
+        gf_log (THIS->name, GF_LOG_ERROR, "RichACL error: %s", buff);
+        va_end (valist);
+}
+
+int
+posix_racl_set (const char *path, const char *key, const char *acl_s)
+{
+        int ret = -1;
+        int flags = 0;
+        acl_type_t type = 0;
+        struct richacl* acl = NULL;
+
+        acl = richacl_from_text (acl_s, &flags, richacl_error);
+        if (NULL == acl) {
+                gf_log (THIS->name, GF_LOG_ERROR, "Failed to convert %s to "
+                        "RichACL", acl_s);
+                return ret;
+        }
+
+        ret = richacl_set_file (path, acl);
+        if (ret) {
+                gf_log (THIS->name, GF_LOG_ERROR, "Failed to set richacl (%s) "
+                        "to file (%s)", acl_s, path);
+                goto out;
+        }
+
+out:
+        richacl_free (acl);
+
+        return ret;
+}
+
+int
+posix_racl_get (const char *path, const char *key, char **acl_s)
+{
+        int             ret     = -1;
+        char           *acl_str = NULL;
+        struct richacl *acl     = NULL;
+
+        if (acl_s == NULL || path == NULL) {
+                gf_log (THIS->name, GF_LOG_ERROR, "Invalid argument");
+                return -1;
+        }
+
+        acl = richacl_get_file (path);
+        if (!acl) {
+                gf_log (THIS->name, GF_LOG_ERROR, "Fail to get richacl for %s",
+                        path);
+                return -1;
+        }
+
+        // TODO: Fix flag
+        acl_str = richacl_to_text (acl, 0);
+        if (!acl_str) {
+                gf_log (THIS->name, GF_LOG_ERROR, "Fail to convert richacl to "
+                        "text for %s", path);
+                goto out;
+        }
+
+        *acl_s = gf_strdup (acl_str);
+        if (*acl_s == NULL)
+                goto out;
+
+        ret = 0;
+out:
+        FREE (acl_str);
+        richacl_free (acl);
+
+        return ret;
+}
+
 #ifdef HAVE_SYS_ACL_H
 int
 posix_pacl_set (const char *path, const char *key, const char *acl_s)
@@ -1080,6 +1158,10 @@ posix_handle_pair (xlator_t *this, const char *real_path,
                 if (stbuf && IS_DHT_LINKFILE_MODE (stbuf))
                         goto out;
                 ret = posix_pacl_set (real_path, key, value->data);
+        } else if (GF_RICHACL_REQUEST (key)) {
+                if (stbuf && IS_DHT_LINKFILE_MODE (stbuf))
+                        goto out;
+                ret = posix_racl_set (real_path, key, value->data);
         } else if (!strncmp(key, POSIX_ACL_ACCESS_XATTR, strlen(key))
                    && stbuf && IS_DHT_LINKFILE_MODE (stbuf)) {
                 goto out;

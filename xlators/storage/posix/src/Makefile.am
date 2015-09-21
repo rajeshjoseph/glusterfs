@@ -6,7 +6,7 @@ posix_la_LDFLAGS = -module -avoid-version
 
 posix_la_SOURCES = posix.c posix-helpers.c posix-handle.c posix-aio.c
 posix_la_LIBADD = $(top_builddir)/libglusterfs/src/libglusterfs.la $(LIBAIO) \
-                  $(ACL_LIBS)
+                  $(ACL_LIBS) -lrichacl
 
 noinst_HEADERS = posix.h posix-mem-types.h posix-handle.h posix-aio.h \
 		 posix-messages.h

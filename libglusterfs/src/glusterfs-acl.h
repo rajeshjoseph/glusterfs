@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2013 Red Hat, Inc. <http://www.redhat.com>
+  Copyright (c) 2013, 2015 Red Hat, Inc. <http://www.redhat.com>
   This file is part of GlusterFS.
 
   This file is licensed to you under your choice of the GNU Lesser
@@ -24,6 +24,7 @@
 
 #include <stdint.h>
 #include <sys/types.h> /* For uid_t */
+#include <sys/richacl.h>
 
 #include "locking.h" /* For gf_lock_t in struct posix_acl_conf */
 
@@ -122,6 +123,16 @@ struct posix_acl_conf {
         (!strncmp(key, GF_POSIX_ACL_ACCESS, strlen(GF_POSIX_ACL_ACCESS)) || \
          !strncmp(key, GF_POSIX_ACL_DEFAULT, strlen(GF_POSIX_ACL_DEFAULT)))
 
+/* --------------------------------------------------------------------------
+ *                              RICHACL
+ * --------------------------------------------------------------------------
+ */
+#define GF_RICHACL_ACL_KEY              "glusterfs.richacl"
+#define GF_RICHACL_SYS_ACL_KEY          "system.richacl"
+#define GF_RICHACL_REQUEST(key) \
+        (!strncmp(key, GF_RICHACL_ACL_KEY, strlen(GF_RICHACL_ACL_KEY)))
+
+/* -------------------------------------------------------------------------*/
 #ifdef HAVE_SYS_ACL_H /* only NetBSD does not support POSIX ACLs */
 
 #include <sys/acl.h>

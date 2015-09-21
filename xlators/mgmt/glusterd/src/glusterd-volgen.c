@@ -1753,8 +1753,13 @@ brick_graph_add_acl (volgen_graph_t *graph, glusterd_volinfo_t *volinfo,
         if (!graph || !volinfo || !set_dict)
                 goto out;
 
+#if 0
         xl = volgen_graph_add (graph, "features/access-control",
                                 volinfo->volname);
+#else
+        xl = volgen_graph_add (graph, "features/gfrichacl",
+                                volinfo->volname);
+#endif
         if (!xl)
                 goto out;
 

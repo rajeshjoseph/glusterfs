@@ -1,1 +1,1 @@
-SUBDIRS = posix-acl
+SUBDIRS = posix-acl richacl

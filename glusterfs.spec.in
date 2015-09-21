@@ -996,6 +996,7 @@ fi
 %{_libdir}/glusterfs/%{version}%{?prereltag}/xlator/encryption/crypt.so
 %endif
 %{_libdir}/glusterfs/%{version}%{?prereltag}/xlator/features/access-control.so
+%{_libdir}/glusterfs/%{version}%{?prereltag}/xlator/features/gfrichacl.so
 %{_libdir}/glusterfs/%{version}%{?prereltag}/xlator/features/barrier.so
 %{_libdir}/glusterfs/%{version}%{?prereltag}/xlator/features/cdc.so
 %{_libdir}/glusterfs/%{version}%{?prereltag}/xlator/features/changelog.so

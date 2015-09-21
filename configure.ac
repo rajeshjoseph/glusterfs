@@ -180,6 +180,8 @@ AC_CONFIG_FILES([Makefile
                 xlators/system/Makefile
                 xlators/system/posix-acl/Makefile
                 xlators/system/posix-acl/src/Makefile
+                xlators/system/richacl/Makefile
+                xlators/system/richacl/src/Makefile
                 xlators/nfs/Makefile
                 xlators/nfs/server/Makefile
                 xlators/nfs/server/src/Makefile
@@ -447,6 +449,10 @@ case $host_os in
         fi
         ;;
 esac
+
+#RichACL
+        RICHACL_LIBS='-lrichacl'
+
 AC_SUBST(ACL_LIBS)
 AC_SUBST(USE_POSIX_ACLS)
 

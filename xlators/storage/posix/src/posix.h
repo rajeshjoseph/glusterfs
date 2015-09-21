@@ -240,6 +240,9 @@ posix_pacl_set (const char *path, const char *key, const char *acl_s);
 int
 posix_pacl_get (const char *path, const char *key, char **acl_s);
 
+int
+posix_racl_get (const char *path, const char *key, char **acl_s);
+
 int32_t
 posix_get_objectsignature (char *, dict_t *);
 

@@ -3908,6 +3908,34 @@ posix_getxattr (call_frame_t *frame, xlator_t *this,
                 goto done;
         }
 
+        if (loc->inode && name && GF_RICHACL_REQUEST (name)) {
+                ret = posix_racl_get (real_path, name, &value);
+                if (ret || !value) {
+                        gf_log (this->name, GF_LOG_WARNING,
+                                "could not get richacl (%s) for %s: %s", name,
+                                real_path, strerror (errno));
+                        op_ret = -1;
+                        op_errno = errno;
+                        goto out;
+                }
+
+                gf_log (this->name, GF_LOG_WARNING, "**** Got ACL: %s", value);
+
+                ret = dict_set_dynstr (dict, (char *)name, value);
+                if (ret < 0) {
+                        GF_FREE (value);
+                        gf_log (this->name, GF_LOG_WARNING,
+                                "could not set richacl (%s) for %s in dictionary: "
+                                "(%s)", name, real_path, strerror (errno));
+                        op_ret = -1;
+                        op_errno = errno;
+                        goto out;
+                }
+
+                size = ret;
+                goto done;
+        }
+
 	if (loc->inode && name &&
 	    (strncmp (name, GF_XATTR_GET_REAL_FILENAME_KEY,
 		      strlen (GF_XATTR_GET_REAL_FILENAME_KEY)) == 0)) {

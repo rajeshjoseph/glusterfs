@@ -9,6 +9,7 @@
 */
 
 #include <sys/wait.h>
+#include <sys/richacl.h>
 #include "fuse-bridge.h"
 #include "mount-gluster-compat.h"
 #include "glusterfs.h"
@@ -19,6 +20,15 @@
 #ifdef __NetBSD__
 #undef open /* in perfuse.h, pulled from mount-gluster-compat.h */
 #endif
+
+
+/* TODO: Forward Declaration */
+struct richacl *richacl_from_xattr(const void *value, size_t size);
+char *richacl_to_text(const struct richacl *acl, int fmt);
+size_t richacl_xattr_size(const struct richacl *acl);
+void richacl_to_xattr(const struct richacl *acl, void *buffer);
+static void send_fuse_richacl (xlator_t *this, fuse_in_header_t *finh,
+                data_t *value_data, size_t expected);
 
 static int gf_fuse_conn_err_log;
 static int gf_fuse_xattr_enotsup_log;
@@ -3113,14 +3123,16 @@ static void
 fuse_setxattr (xlator_t *this, fuse_in_header_t *finh, void *msg)
 {
         struct fuse_setxattr_in *fsi = msg;
-        char         *name = (char *)(fsi + 1);
-        char         *value = name + strlen (name) + 1;
-        struct fuse_private *priv = NULL;
+        char                    *name = (char *)(fsi + 1);
+        char                    *value = name + strlen (name) + 1;
+        int                      value_len = fsi->size;
+        struct fuse_private     *priv = NULL;
 
-        fuse_state_t *state = NULL;
-        char         *dict_value = NULL;
-        int32_t       ret = -1;
-        char *newkey = NULL;
+        fuse_state_t            *state = NULL;
+        char                    *dict_value = NULL;
+        int32_t                  ret = -1;
+        char                    *newkey = NULL;
+        char                    *newval = NULL;
 
         priv = this->private;
 
@@ -3145,10 +3157,26 @@ fuse_setxattr (xlator_t *this, fuse_in_header_t *finh, void *msg)
 
         if (!priv->acl) {
                 if ((strcmp (name, POSIX_ACL_ACCESS_XATTR) == 0) ||
-                    (strcmp (name, POSIX_ACL_DEFAULT_XATTR) == 0)) {
+                    (strcmp (name, POSIX_ACL_DEFAULT_XATTR) == 0) ||
+                    (strcmp (name, GF_RICHACL_SYS_ACL_KEY) == 0)) {
                         send_fuse_err (this, finh, EOPNOTSUPP);
                         GF_FREE (finh);
                         return;
+                }
+        } else {
+                if (0 == strcmp (name, GF_RICHACL_SYS_ACL_KEY)) {
+                        struct richacl *racl = NULL;
+                        name = GF_RICHACL_ACL_KEY;
+
+                        racl = richacl_from_xattr (value, fsi->size);
+                        newval = richacl_to_text (racl, RICHACL_TEXT_SIMPLIFY);
+                        if (newval == NULL) {
+                                FREE (finh);
+                                return;
+                        }
+                        value = newval;
+                        value_len = strlen (newval);
+                        richacl_free (racl);
                 }
         }
 
@@ -3208,11 +3236,12 @@ fuse_setxattr (xlator_t *this, fuse_in_header_t *finh, void *msg)
                 return;
         }
 
-        if (fsi->size > 0) {
-                dict_value = memdup (value, fsi->size);
+        if (value_len > 0) {
+                dict_value = memdup (value, value_len + 1);
+                dict_value [value_len] = '\0';
         }
         dict_set (state->xattr, newkey,
-                  data_from_dynptr ((void *)dict_value, fsi->size));
+                  data_from_dynptr ((void *)dict_value, value_len + 1));
         dict_ref (state->xattr);
 
         state->flags = fsi->flags;
@@ -3222,7 +3251,6 @@ fuse_setxattr (xlator_t *this, fuse_in_header_t *finh, void *msg)
 
         return;
 }
-
 
 static void
 send_fuse_xattr (xlator_t *this, fuse_in_header_t *finh, const char *value,
@@ -3270,13 +3298,15 @@ static int
 fuse_xattr_cbk (call_frame_t *frame, void *cookie, xlator_t *this,
                 int32_t op_ret, int32_t op_errno, dict_t *dict, dict_t *xdata)
 {
-        char           *value = "";
-        fuse_state_t   *state = NULL;
-        fuse_in_header_t *finh = NULL;
-        data_t         *value_data = NULL;
-        int             ret = -1;
-        int32_t         len = 0;
-        int32_t         len_next = 0;
+        char                    *value = "";
+        char                    *key   = NULL;
+        fuse_state_t            *state = NULL;
+        fuse_in_header_t        *finh = NULL;
+        data_t                  *value_data = NULL;
+        gf_boolean_t             isrichacl = _gf_false;
+        int                      ret = -1;
+        int32_t                  len = 0;
+        int32_t                  len_next = 0;
 
         state = frame->root->state;
         finh  = state->finh;
@@ -3288,16 +3318,29 @@ fuse_xattr_cbk (call_frame_t *frame, void *cookie, xlator_t *this,
                         "%"PRIu64": %s() %s => %d", frame->root->unique,
                         gf_fop_list[frame->root->op], state->loc.path, op_ret);
 
+                if (strcmp (state->name, GF_RICHACL_SYS_ACL_KEY) == 0) {
+                        key = GF_RICHACL_ACL_KEY;
+                        isrichacl = _gf_true;
+                } else {
+                        key = state->name;
+                }
+
                 /* if successful */
-                if (state->name) {
+                if (key) {
                         /* if callback for getxattr */
-                        value_data = dict_get (dict, state->name);
+                        value_data = dict_get (dict, key);
                         if (value_data) {
-
-                                ret = value_data->len; /* Don't return the value for '\0' */
-                                value = value_data->data;
-
-                                send_fuse_xattr (this, finh, value, ret, state->size);
+                                if (isrichacl) {
+                                        send_fuse_richacl (this, finh,
+                                                           value_data,
+                                                           state->size);
+                                } else {
+                                        /* Don't return the value for '\0' */
+                                        ret = value_data->len;
+                                        value = value_data->data;
+                                        send_fuse_xattr (this, finh, value,
+                                                         ret, state->size);
+                                }
                                 /* if(ret >...)...else if...else */
                         } else {
                                 send_fuse_err (this, finh, ENODATA);
@@ -3817,6 +3860,54 @@ fuse_setlk (xlator_t *this, fuse_in_header_t *finh, void *msg)
         fuse_resolve_and_resume (state, fuse_setlk_resume);
 
         return;
+}
+
+
+static void
+richacl_error (const char *fmt, ...)
+{
+        char buff [1024] = "";
+        va_list valist;
+        va_start (valist, fmt);
+        sprintf (buff, fmt, valist);
+        gf_log (THIS->name, GF_LOG_ERROR, "RichACL error: %s", buff);
+        va_end (valist);
+}
+
+
+static void
+send_fuse_richacl (xlator_t *this, fuse_in_header_t *finh, data_t *value_data,
+                   size_t expected)
+{
+        char           *value = "";
+        struct richacl *acl = NULL;
+        int             flags = 0;
+        size_t          size = 0;
+
+        acl = richacl_from_text (value_data->data, &flags, richacl_error);
+        if (acl == NULL)
+                goto error;
+
+        size = richacl_xattr_size (acl);
+        value = GF_CALLOC (size + 1, sizeof (*value), gf_common_mt_char);
+
+        if (value == NULL)
+                goto error;
+
+        richacl_to_xattr (acl, value);
+
+        send_fuse_xattr (this, finh, value, size, expected);
+
+        richacl_free (acl);
+
+        GF_FREE (value);
+
+        return;
+error:
+        if (acl != NULL)
+                richacl_free (acl);
+
+        send_fuse_err (this, finh, errno);
 }
 
 #if FUSE_KERNEL_MINOR_VERSION >= 11
